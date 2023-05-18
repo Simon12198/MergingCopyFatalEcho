@@ -1,6 +1,11 @@
 import pygame, os, math
+
 from animation import load_animations
 
+SCREEN_WIDTH = 1200
+screen_height = 640
+WINDOW_SIZE = (SCREEN_WIDTH, screen_height)  # set up window size
+screen = pygame.display.set_mode(WINDOW_SIZE)  # initiate screen
 def flip(img, boolean):
     pygame.transform.flip(img, boolean, False)
 
@@ -10,7 +15,6 @@ def collision_detection(rect1, rect_list):
         if rect.colliderect(rect1):
             hit_list.append(rect1)
     return hit_list
-
 class Player(pygame.sprite.Sprite):
     def __init__(self, loc):
         super().__init__()
@@ -21,14 +25,19 @@ class Player(pygame.sprite.Sprite):
         self.change_action('idle')
         self.flip = False
         self.collide_bottom = False
-
+        self.health = 5
+        self.max_health = 20
         self.image = self.animations[self.action][self.anim[self.frame]]
-        self.rect = self.image.get_rect(topleft = loc)
-        #debugging for slope collisions by pixel
+        self.rect = self.image.get_rect(topleft=loc)
+        #heart images
+        self.full_heart = pygame.image.load('data/graphics/bg_images/heart.png').convert_alpha()
+        self.half_heart = pygame.image.load('data/graphics/bg_images/half_heart.png').convert_alpha()
+        self.empty_heart = pygame.image.load('data/graphics/bg_images/empty_heart.png').convert_alpha()
+        # debugging for slope collisions by pixel
         self.mask = pygame.mask.from_surface(self.image.convert_alpha())
         self.DEBUG = False
 
-        #player movement
+        # player movement
         self.x = loc[0]
         self.y = loc[1]
         self.movement = [0, 0]
@@ -40,52 +49,57 @@ class Player(pygame.sprite.Sprite):
         self.gravity_multiplier = 0.2
         self.n = 0
 
-    def get_input(self):
+    def get_damage(self):
+        if self.health > 0:
+            self.health -= 1
 
+    def get_health(self):
+        if self.health < self.max_health:
+            self.health += 1
+
+    def full_hearts(self):
+        for heart in range(self.health):
+            screen.blit(self.full_heart, (heart * 50 + 10, 45))
+
+    def empty_hearts(self):
+        for heart in range(self.max_health):
+            if heart < self.health:
+                screen.blit(self.full_heart, (heart * 50 + 10, 5))
+            else:
+                screen.blit(self.empty_heart, (heart * 50 + 10, 5))
+
+    def half_hearts(self):
+        half_hearts_total = self.health / 2
+        half_heart_exists = half_hearts_total - int(half_hearts_total) != 0
+
+        for heart in range(int(self.max_health / 2)):
+            if int(half_hearts_total) > heart:
+                screen.blit(self.full_heart, (heart * 50 + 10, 85))
+            elif half_heart_exists and int(half_hearts_total) == heart:
+                screen.blit(self.half_heart, (heart * 50 + 10, 85))
+            else:
+                screen.blit(self.empty_heart, (heart * 50 + 10, 85))
+
+    def get_input(self):
         self.movement = [0, 0]
         self.keys = pygame.key.get_pressed()
-        if self.keys[pygame.K_d]:
-            self.DEBUG = True
-        if self.keys[pygame.K_f]:
-            self.DEBUG = False
-
-        if self.DEBUG:
-            if self.keys[pygame.K_RIGHT]:
-
+        if self.keys[pygame.K_RIGHT]:
+            self.movement[0] += 3
+            self.direction = [True, False]
+            self.flip = False
+            if -0.2 < self.vertical_momentum < 0.2 and self.keys[pygame.K_SPACE]:
                 self.movement[0] += 1
-                self.direction = [True, False]
-                self.flip = False
-
-            elif self.keys[pygame.K_LEFT]:
+        elif self.keys[pygame.K_LEFT]:
+            self.movement[0] -= 3
+            self.direction = [False, True]
+            self.flip = True
+            if -0.2 < self.vertical_momentum < 0.2 and self.keys[pygame.K_SPACE]:
                 self.movement[0] -= 1
-                self.direction = [False, True]
-                self.flip = True
-
-            if self.keys[pygame.K_UP]:
-                self.movement[1] = -1
-
-            if self.keys[pygame.K_DOWN]:
-                self.movement[1] = 1
         else:
-            self.keys = pygame.key.get_pressed()
-            if self.keys[pygame.K_RIGHT]:
-
-                self.movement[0] += 3
-                self.direction = [True, False]
-                self.flip = False
-                if -0.2 < self.vertical_momentum < 0.2 and self.keys[pygame.K_SPACE]:
-                    self.movement[0] += 1
-            elif self.keys[pygame.K_LEFT]:
-                self.movement[0] -= 3
-                self.direction = [False, True]
-                self.flip = True
-                if -0.2 < self.vertical_momentum < 0.2 and self.keys[pygame.K_SPACE]:
-                    self.movement[0] -= 1
-            else:
-                self.direction = [False, False]
-            if self.keys[pygame.K_SPACE]:
-                if self.air_timer < 6:
-                    self.vertical_momentum = -4
+            self.direction = [False, False]
+        if self.keys[pygame.K_SPACE]:
+            if self.air_timer < 6:
+                self.vertical_momentum = -4
 
     def gravity(self):
         self.gravity_multiplier = 0.2
@@ -129,44 +143,39 @@ class Player(pygame.sprite.Sprite):
 
 
     def status(self):
+        self.jump = False
+
         if self.movement[1] < 0:
             self.change_action('jump')
+
         elif self.movement[1] > 1:
             self.change_action('fall')
         else:
             if self.movement[0] == 0:
                 self.change_action('idle')
+                '''pygame.mixer.Sound.play(grass_idle_sound)'''
             if self.movement[0] > 0:
                 self.change_action('run')
+                '''pygame.mixer.Sound.play(grass_walking_sound)'''
+
             if self.movement[0] < 0:
                 self.change_action('run')
+                '''pygame.mixer.Sound.play(grass_walking_sound)'''
 
-
+    def health_update(self):
+        self.full_hearts()
+        self.empty_hearts()
+        self.half_hearts()
 
     def update(self, scroll):
         self.get_input()
         # gravity
-        if not self.DEBUG:
-            self.gravity()
+        self.gravity()
         self.movement[1] += self.vertical_momentum
-
 
         self.rect.x -= scroll[0]
         self.rect.y -= scroll[1]
 
         self.implement_anim(True)
-        self.mask = pygame.mask.from_surface(self.image.convert_alpha())
         self.status()
-
-
-
-
-
-
-
-
-
-
-
-
 
